@@ -1,6 +1,14 @@
-import random, pygame, sys, time
-from pygame.locals import *  # puts a limited set of constants and functions into the global namespace of our script
+import random,pygame, sys, time
 
+from pygame import font
+from pygame.locals import *  # puts a limited set of constants and functions into the global namespace of our script
+from pygame.mixer import pause
+
+### ====================================================================================================
+# if I improve the game I should make it so that every time that I win a game it gets gradually harder.
+### ====================================================================================================
+
+pygame.mixer.pre_init(44100, 16, 2, 4090)  # sets up a mixer which is what python uses for sound
 pygame.init()  # initializes pygame
 
 FPS = 30  # frames per second, the general speed of the program
@@ -9,19 +17,29 @@ displayHeight = 480  # size of windows' height in pixels
 box_reveal_spd = 8  # speed boxes' sliding reveals and covers
 box_size = 40  # size of box height & width in pixels
 gap = 10  # size of gap between boxes in pixels
-tile_width = 6  # number of columns of icons
-tile_height = 5  # number of rows of icons
+tile_width = 4  # number of columns of icons 6
+tile_height = 4  # number of rows of icons 5
 
-gameDisplay = pygame.display.set_mode((displayWidth, displayHeight))  # This represents the window that opens up (GUI)
+# ----------------------- Make Game Screen -------------------------
+gameDisplay = pygame.display.set_mode((displayWidth, displayHeight),
+                                  pygame.FULLSCREEN)  # This represents the window that opens up (GUI)
 clock = pygame.time.Clock()  # This is what helps us define time in the game
 
+fullscreen = False
+pause = False
 pygame.display.set_caption('Memory Puzzle Game')  # Displays the name of the game (top right)
+
+# ----------------------- Play Background Music --------------------
+# this doesnt work
+# pygame.mixer.music.load("Tokyo Daylight")  # add in the music file
+# pygame.mixer.music.set_volume(0.15)  # min 0-1 max
+# pygame.mixer.music.play(-1)  # the -1 means to loop endlessly
 
 assert (tile_width * tile_height) % 2 == 0, 'Board needs to have an even number of boxes for pairs of matches.'
 x_margin = int((displayWidth - (tile_width * (box_size + gap))) / 2)
 y_margin = int((displayHeight - (tile_height * (box_size + gap))) / 2)
 
-#                R    G    B
+#         R    G    B
 GRAY = (100, 100, 100)
 DARKBLUE = (0, 0, 100)
 WHITE = (255, 255, 255)
@@ -36,6 +54,11 @@ BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 BLUE = (0, 0, 255)
 LIGHTBLUE = (60, 60, 100)
+BLUEGREY = (27, 55, 82)
+MUSTARDYELLOW = (206, 161, 8)
+LIGHTYELLOW = (255, 215, 68)
+PINKPEACH = (255, 197, 192)
+LIGHTPEACH = (255, 141, 152)
 
 # Button Color Effects
 BRIGHTRED = (255, 0, 0)
@@ -43,7 +66,7 @@ BRIGHTGREEN = (0, 255, 0)
 LIGHTGREY = (211, 211, 211)
 HOTPINK = (255, 105, 180)
 
-backgroud_color = LIGHTBLUE
+backgroud_color = BLUEGREY
 lightBGcolor = GRAY
 box_color = WHITE
 highlight_color = PINK
@@ -54,7 +77,7 @@ diamond = 'diamond'
 lines = 'lines'
 oval = 'oval'
 
-all_colors = (RED, GREEN, PINK, YELLOW, ORANGE, PURPLE, CYAN, DARKBLUE, WHITE, BLACK, BLUE)
+all_colors = (RED, GREEN, PINK, YELLOW, ORANGE, PURPLE, CYAN, PINK, WHITE, BLACK, BLUE)
 all_shapes = (donut, square, diamond, lines, oval)
 assert len(all_colors) * len(all_shapes) * 2 >= tile_width * tile_height, \
     "Board is too big for the number of shapes/colors defined."
@@ -96,6 +119,149 @@ def button(msg, x, y, w, h, inactiveColor, activeColor, fontSize, eventAction=No
     gameDisplay.blit(textSurf, textRect)
 
 
+def blit_text(surface, text, pos, font,
+              color=pygame.Color('black')):  # allows me to have multiple limes show up in my code.
+    words = [word.split(' ') for word in text.splitlines()]  # 2D array where each row is a list of words.
+    space = font.size(' ')[0]  # The width of a space.
+    max_width, max_height = surface.get_size()
+    x, y = pos
+    for line in words:
+        for word in line:
+            word_surface = font.render(word, 0, color)
+            word_width, word_height = word_surface.get_size()
+            if x + word_width >= max_width:
+                x = pos[0]  # Reset the x.
+                y += word_height  # Start on new row.
+            surface.blit(word_surface, (x, y))
+            x += word_width + space
+        x = pos[0]  # Reset the x.
+        y += word_height  # Start on new row.
+
+
+tutorial_text = "--- Game Tutorial: --- \n1. Click start to start the game (game will beign right away). " \
+       "\n\n2. The tiles will appear and uncover 5 at a time. ( so make sure to pay attention to where you see matching pairs)" \
+       "\n\n3. Click a tile and it will uncover its symbol, to find its pair click a different tile. (MUST MATCH)" \
+       "\n\n4. If the player was successful in finding a pair, the images will stay exposed. If the player did not, the tiles will revert back to being covered." \
+       "\n\n5. Once the player has successfully finished the puzzle a winning animation will play. However, shortly after the game will restart. " \
+       "\n\nTO MOVE TO THE NEXT PAGE CLICK ANYWHERE ON THE SCREEN OR CLICK THE NEXT BUTTON " \
+       "\n\n--- WARNING: No data will be saved! ---"
+
+tutorial_text2 = "--- Game Tutorial (Continued) --- \nThere will be two buttons available during your game play one being \'Go Back\' and the other being \'Tutorial\'." \
+        "\n\nClicking \'Go Back\' will take you back to the title page. YOUR PROGRESS WILL BE DELETED. " \
+        "\n\nOn the other hand clicking on Tutorial will take you to the game\'s Tutorial and SAVE YOUR PROGRESS IN THE GAME" \
+        "\n\nThe player also has the option of pressing the key \'P\' this will pause the GAME as well as the MUSIC, until you either click \'Unpause\' or \'Restart\'" \
+        "\n\nThe player may also exit the game when they\'re in the paused screen" \
+
+tutorial_text3 = "--- Settings Page: --- \n\n1. The player can customize the music of the game (ON/OFF). " \
+        "\n\n2. Once you selected what you wish to set your music to you may click the \'Go Back\' button to return to the title screen. " \
+        "\n\nPlease note that when you click on the \'Music On\' button the music will play again from the beginning"\
+        "\n\n--- Quit Button: --- \n\n1. Once the player does not want to play anymore, the player can click the quit button and will be exited out of the game."
+
+pause_text = "Press \'P\' to pause the game"
+
+font = pygame.font.Font("freesansbold.ttf", 20)
+
+
+def tutorial_page():
+    display_instructions = True
+    instruction_page = 1
+
+    # -------- Tutorial Page Loop -----------
+    while display_instructions:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                instruction_page += 1
+                if instruction_page == 4:
+                    display_instructions = False
+
+        # Set the screen background
+        gameDisplay.fill(GRAY)
+
+        if instruction_page == 1:
+            # Draw instructions, page 1
+            button("Next Page", 450, 410, 150, 50, GREEN, BRIGHTGREEN, 20)
+            blit_text(gameDisplay, tutorial_text, (20, 20), font)
+
+        if instruction_page == 2:
+            # Draw instructions, page 2
+            button("Next Page", 450, 410, 150, 50, GREEN, BRIGHTGREEN, 20)
+            blit_text(gameDisplay, tutorial_text2, (20, 20), font)
+
+        if instruction_page == 3:
+            # Draw instructions, page 2
+            button("Done", 450, 410, 150, 50, RED, BRIGHTRED, 20)
+            blit_text(gameDisplay, tutorial_text3, (20, 20), font)
+
+        # Go ahead and update the screen with what we've drawn.
+        pygame.display.update()
+        # Limit to 60 frames per second
+        clock.tick(60)
+
+
+def unpaused():
+    global pause
+    pygame.mixer.music.unpause()
+
+    pause = False
+
+
+def paused():
+    pygame.mixer.music.pause()
+
+    while pause:
+        for event in pygame.event.get():
+
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+
+        gameDisplay.fill(WHITE)
+
+        largeText = pygame.font.SysFont("comicsansms", 115)
+        TextSurf, TextRect = text_objects("Paused", largeText)
+        TextRect.center = ((displayWidth / 2), (displayHeight / 2))
+        gameDisplay.blit(TextSurf, TextRect)
+
+        button("Unpause", 50, 340, 100, 50, GREEN, BRIGHTGREEN, 18, unpaused)
+
+        button("Restart", 225, 325, 200, 75, PINKPEACH, LIGHTPEACH, 40, main)
+
+        button("Exit Game", 500, 340, 100, 50, RED, BRIGHTRED, 18, quitgame)
+
+        pygame.display.update()
+        clock.tick(15)
+
+def music_on():
+    pygame.mixer.music.play()
+
+
+def music_off():
+    pygame.mixer.music.stop()
+
+
+def settings():
+    global gameDisplay
+    settings_page = True
+
+    while settings_page:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                pygame.quit()
+                quit()
+
+        gameDisplay.fill(backgroud_color)
+
+        button("Music On", 150, 150, 150, 50, GRAY, LIGHTGREY, 20, music_on)
+        button("Music Off", 350, 150, 150, 50, GRAY, LIGHTGREY, 20, music_off)
+        button("Go Back", 250, 250, 150, 50, RED, BRIGHTRED, 20, game_Intro)
+
+        pygame.display.update()
+        clock.tick(60)
+
+
 def quitgame():
     pygame.quit()
     quit()
@@ -111,19 +277,19 @@ def game_Intro():
                 quit()
 
         gameDisplay.fill(backgroud_color)
-        largeText = pygame.font.Font('freesansbold.ttf', 50)
+        largeText = pygame.font.Font('freesansbold.ttf', 58)
         TextSurf, TextRect = text_objects("Memory Puzzle Game", largeText)
         TextRect.center = ((displayWidth / 2), (displayHeight / 2))
         gameDisplay.blit(TextSurf, TextRect)
 
         # PLAY BUTTON
-        button("Start!", 50, 340, 100, 50, GREEN, BRIGHTGREEN, 20, main )
+        button("Start!", 50, 340, 100, 50, GREEN, BRIGHTGREEN, 20, main)
 
         # Tutorial Button
-        button("Tutorial", 225, 325, 200, 75, PINK, HOTPINK, 40)
+        button("Tutorial", 225, 325, 200, 75, PINKPEACH, LIGHTPEACH, 40, tutorial_page)
 
         # Settings Button
-        button("Settings", 500, 25, 100, 75, LIGHTGREY, GRAY, 20)
+        button("Settings", 500, 25, 100, 75, MUSTARDYELLOW, LIGHTYELLOW, 20, settings)
 
         # QUIT BUTTON
         button("Quit!", 500, 340, 100, 50, RED, BRIGHTRED, 20, quitgame)
@@ -133,7 +299,9 @@ def game_Intro():
 
 
 def main():
-    global clock, gameDisplay
+    pygame.mixer.music.unpause()
+
+    global clock, gameDisplay, pause
 
     mousex = 0  # used to store x coordinate of mouse event
     mousey = 0  # used to store y coordinate of mouse event
@@ -161,6 +329,10 @@ def main():
             elif event.type == MOUSEBUTTONUP:
                 mousex, mousey = event.pos
                 mouseClicked = True
+            if event.type == pygame.KEYDOWN:  # Pauses Game
+                if event.key == pygame.K_p:
+                    pause = True
+                    paused()
 
         boxx, boxy = getBoxAtPixel(mousex, mousey)
         if boxx != None and boxy != None:
@@ -199,6 +371,10 @@ def main():
                         # Replay the start game animation.
                         startGameAnimation(mainBoard)
                     firstSelection = None  # reset firstSelection variable
+
+        button("Instructions", 500, 25, 125, 75, PINKPEACH, HOTPINK, 20, tutorial_page)
+        button("Go Back", 30, 25, 100, 75, RED, BRIGHTRED, 20, game_Intro)
+        blit_text(gameDisplay, pause_text, (180, 45), font)
 
         # Redraw the screen and wait a clock tick.
         pygame.display.update()
@@ -306,7 +482,7 @@ def drawBoxCovers(board, boxes, coverage):
 
 def revealBoxesAnimation(board, boxesToReveal):
     # Do the "box reveal" animation.
-    for coverage in range(box_size, (-box_reveal_spd) - 1, -box_reveal_spd):
+    for coverage in range(box_size, (-box_reveal_spd) - 150, -box_reveal_spd):
         drawBoxCovers(board, boxesToReveal, coverage)
 
 
@@ -336,20 +512,19 @@ def drawHighlightBox(boxx, boxy):
 
 
 def startGameAnimation(board):
-    # Randomly reveal the boxes 10 at a time.
+    # Randomly reveal the boxes 5 at a time.
     coveredBoxes = generateRevealedBoxesData(False)
     boxes = []
     for x in range(tile_width):
         for y in range(tile_height):
             boxes.append((x, y))
     random.shuffle(boxes)
-    boxGroups = splitIntoGroupsOf(2, boxes)
+    boxGroups = splitIntoGroupsOf(5, boxes)
 
     drawBoard(board, coveredBoxes)
     for boxGroup in boxGroups:
         revealBoxesAnimation(board, boxGroup)
         coverBoxesAnimation(board, boxGroup)
-
 
 def winningAnimation(board):
     # flash the background color when the player has won
@@ -358,11 +533,21 @@ def winningAnimation(board):
     color2 = backgroud_color
 
     for i in range(13):
+        pygame.time.wait(150) # Causes the Winning text to blink
+
+        largeText = pygame.font.SysFont('comicsansms', 115)
+        textSurf, textRect = text_objects("Winner!!", largeText)
+        textRect.center = ((displayWidth / 2), (displayHeight / 2))
+        gameDisplay.blit(textSurf, textRect)
+
+        pygame.display.update()
+
         color1, color2 = color2, color1  # swap colors
         gameDisplay.fill(color1)
         drawBoard(board, coveredBoxes)
-        pygame.display.update()
+
         pygame.time.wait(300)
+        pygame.display.update()
 
 
 def wonGame(revealedBoxes):
